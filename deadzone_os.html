@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEADZONE//OS — Zombie Survival</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Creepster&family=Oswald:wght@300;400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --blood: #8B0000;
+    --blood-bright: #CC0000;
+    --rust: #5C2A00;
+    --paper: #2a1a0a;
+    --paper-light: #3a2510;
+    --ink: #c8a060;
+    --ink-dim: #6b5030;
+    --green: #1a3a1a;
+    --green-bright: #22ff44;
+    --red-alert: #ff2222;
+    --mono: 'Share Tech Mono', monospace;
+    --horror: 'Creepster', cursive;
+    --tactical: 'Oswald', sans-serif;
+  }
+
+  body {
+    background: #0a0603;
+    color: var(--ink);
+    font-family: var(--mono);
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    user-select: none;
+  }
+
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; }
+  .screen.active { display: flex; }
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* FACE SCAN */
+  #face-screen { background: #050302; align-items: center; justify-content: center; }
+  .face-title { font-family: var(--horror); font-size: 28px; color: var(--blood-bright); text-align: center; letter-spacing: 6px; margin-bottom: 8px; animation: flicker 3s infinite; }
+  .face-sub { font-size: 11px; color: var(--ink-dim); text-align: center; letter-spacing: 3px; margin-bottom: 24px; }
+  .face-container { position: relative; width: 280px; height: 280px; margin: 0 auto 20px; }
+  #face-video { width: 280px; height: 280px; object-fit: cover; border: 1px solid var(--blood); filter: grayscale(60%) contrast(1.2); display: block; }
+  .scan-overlay { position: absolute; inset: 0; pointer-events: none; }
+  .scan-corner { position: absolute; width: 24px; height: 24px; border-color: var(--blood-bright); border-style: solid; }
+  .scan-corner.tl { top:0;left:0;border-width:2px 0 0 2px; }
+  .scan-corner.tr { top:0;right:0;border-width:2px 2px 0 0; }
+  .scan-corner.bl { bottom:0;left:0;border-width:0 0 2px 2px; }
+  .scan-corner.br { bottom:0;right:0;border-width:0 2px 2px 0; }
+  .scan-line { position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--blood-bright),transparent);animation:scan-move 2s linear infinite;opacity:0; }
+  .scan-line.active { opacity:1; }
+  @keyframes scan-move { 0%{top:0} 100%{top:280px} }
+  .face-grid { position:absolute;inset:0;background-image:linear-gradient(rgba(139,0,0,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(139,0,0,0.08) 1px,transparent 1px);background-size:28px 28px; }
+  .face-dots { position:absolute;inset:0;opacity:0;transition:opacity 0.5s; }
+  .face-dots.active { opacity:1; }
+  .face-dots circle { animation:dot-pulse 1s ease-in-out infinite; }
+  @keyframes dot-pulse { 0%,100%{r:2;opacity:0.4} 50%{r:4;opacity:1} }
+  .face-status { font-family:var(--mono);font-size:11px;color:var(--ink-dim);text-align:center;letter-spacing:2px;height:16px;margin-bottom:12px;transition:color 0.3s; }
+  .face-status.scanning { color:var(--ink);animation:blink 0.8s infinite; }
+  .face-status.denied { color:var(--red-alert);animation:shake 0.3s; }
+  .face-status.granted { color:var(--green-bright); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-6px)} 80%{transform:translateX(6px)} }
+  @keyframes flicker { 0%,98%,100%{opacity:1} 99%{opacity:0.4} }
+  .face-bar { width:280px;height:4px;background:#1a0a0a;border:1px solid var(--ink-dim);margin:0 auto 16px;overflow:hidden; }
+  .face-bar-fill { height:100%;background:var(--blood-bright);width:0%;transition:width 0.1s linear; }
+  .face-denied-msg { position:absolute;inset:0;background:rgba(139,0,0,0.85);display:none;align-items:center;justify-content:center;font-family:var(--horror);font-size:32px;color:#fff;letter-spacing:4px;text-align:center; }
+  .face-denied-msg.show { display:flex; }
+  .cam-error { font-size:11px;color:var(--ink-dim);text-align:center;margin-top:8px;display:none; }
+  .override-btn { font-family:var(--mono);font-size:10px;color:#333;background:none;border:1px solid #222;padding:4px 12px;cursor:pointer;letter-spacing:1px;margin-top:8px;transition:color 0.2s,border-color 0.2s; }
+  .override-btn:hover { color:var(--ink-dim);border-color:var(--ink-dim); }
+
+  /* BOOT */
+  #boot-screen { background:#050302;font-family:var(--mono);font-size:12px;color:var(--ink-dim);padding:24px;overflow:hidden;flex-direction:column;gap:0; }
+  .boot-line { opacity:0;animation:boot-appear 0.05s forwards;margin-bottom:2px; }
+  .boot-line.ok { color:var(--green-bright); }
+  .boot-line.warn { color:#ffaa00; }
+  .boot-line.err { color:var(--red-alert); }
+  .boot-line.blood { color:var(--blood-bright);font-family:var(--horror);font-size:16px;letter-spacing:3px; }
+  @keyframes boot-appear { to{opacity:1} }
+  .boot-progress { width:100%;height:3px;background:#111;margin:12px 0;opacity:0;animation:boot-appear 0.05s 2s forwards; }
+  .boot-progress-fill { height:100%;background:var(--blood-bright);width:0%;transition:width 3s linear; }
+  .unskippable-warning { border:1px solid var(--blood);padding:12px 16px;margin:16px 0;opacity:0;animation:boot-appear 0.05s forwards;background:rgba(139,0,0,0.1); }
+  .uw-title { color:var(--blood-bright);font-size:11px;letter-spacing:3px;margin-bottom:8px; }
+  .uw-text { color:var(--ink-dim);font-size:10px;line-height:1.8; }
+  .uw-countdown { color:var(--ink);font-size:10px;margin-top:8px; }
+
+  /* MAIN */
+  #main-screen { background:#0a0603;flex-direction:column; }
+  .top-bar { display:flex;align-items:center;gap:12px;padding:8px 16px;background:#0d0804;border-bottom:1px solid #2a1500;flex-shrink:0; }
+  .top-bar-title { font-family:var(--horror);font-size:20px;color:var(--blood-bright);letter-spacing:4px;animation:flicker 5s infinite; }
+  .top-bar-user { font-size:10px;color:var(--green-bright);letter-spacing:2px;margin-left:auto; }
+  .top-bar-coords { font-size:9px;color:var(--ink-dim);letter-spacing:1px; }
+  .paranoid-badge { font-size:9px;background:var(--blood);color:#ffcccc;padding:2px 8px;letter-spacing:2px;animation:blink 1.5s infinite; }
+  .main-layout { display:flex;flex:1;overflow:hidden;height:calc(100vh - 44px); }
+
+  /* MAP */
+  .map-area { flex:1;position:relative;overflow:hidden;background:#0f0805; }
+  .map-grid { position:absolute;inset:0;background-image:linear-gradient(rgba(139,0,0,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(139,0,0,0.05) 1px,transparent 1px);background-size:40px 40px; }
+  .map-location { position:absolute;transform:translate(-50%,-50%);cursor:pointer; }
+  .map-dot { width:8px;height:8px;border-radius:50%;background:var(--blood-bright);border:1px solid #ff6666;animation:pulse-red 2s infinite;margin:0 auto 2px; }
+  .map-dot.safe { background:var(--green-bright);border-color:#88ff88;animation:pulse-green 2s infinite; }
+  .map-dot.danger { background:#ff8800;border-color:#ffcc00;animation:pulse-red 1s infinite; }
+  @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(200,0,0,0.6)} 50%{box-shadow:0 0 0 8px rgba(200,0,0,0)} }
+  @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 0 rgba(30,200,60,0.6)} 50%{box-shadow:0 0 0 8px rgba(30,200,60,0)} }
+  .map-label { font-size:8px;color:var(--ink);text-align:center;letter-spacing:1px;white-space:nowrap;text-shadow:0 0 4px #000; }
+  .route-svg { position:absolute;inset:0;pointer-events:none; }
+  .player-dot { position:absolute;width:12px;height:12px;border-radius:50%;background:#00ffff;border:2px solid #ffffff;transform:translate(-50%,-50%);animation:pulse-cyan 1s infinite;z-index:10;left:50%;top:50%;transition:left 2s ease,top 2s ease; }
+  @keyframes pulse-cyan { 0%,100%{box-shadow:0 0 0 0 rgba(0,255,255,0.8)} 50%{box-shadow:0 0 0 10px rgba(0,255,255,0)} }
+  .paranoid-overlay { position:absolute;inset:0;pointer-events:none;z-index:5;transition:opacity 1s;opacity:0; }
+  .paranoid-overlay.active { opacity:1; }
+  .paranoid-text { position:absolute;font-size:9px;color:rgba(255,30,30,0.4);letter-spacing:2px;font-family:var(--mono); }
+  .tap-pattern-ui { position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;z-index:20;opacity:0;transition:opacity 0.3s;pointer-events:none; }
+  .tap-pattern-ui.show { opacity:1;pointer-events:auto; }
+  .tap-instruction { font-size:9px;color:var(--blood-bright);letter-spacing:2px;text-align:center;animation:blink 0.8s infinite; }
+  .tap-dots { display:flex;gap:6px; }
+  .tap-dot { width:10px;height:10px;border-radius:50%;border:1px solid var(--blood);background:transparent;transition:background 0.1s; }
+  .tap-dot.hit { background:var(--blood-bright);box-shadow:0 0 6px var(--blood-bright); }
+  .tap-btn { font-family:var(--mono);font-size:10px;background:rgba(139,0,0,0.3);border:1px solid var(--blood);color:var(--ink);padding:6px 20px;cursor:pointer;letter-spacing:2px; }
+  .tap-btn:active { background:rgba(139,0,0,0.7); }
+  .route-info { position:absolute;top:8px;left:8px;background:rgba(10,6,3,0.85);border:1px solid var(--ink-dim);padding:8px 12px;font-size:9px;color:var(--ink-dim);z-index:10;min-width:160px; }
+  .route-info-line { margin-bottom:3px; }
+  .route-info-line span { color:var(--ink); }
+  .route-paranoid { color:var(--blood-bright);font-size:8px;animation:blink 1s infinite; }
+  .zombie-icon { position:absolute;transform:translate(-50%,-50%);font-size:14px;animation:zombie-wander 3s ease-in-out infinite;z-index:3; }
+  @keyframes zombie-wander { 0%,100%{transform:translate(-50%,-50%) rotate(-3deg)} 50%{transform:translate(-50%,-50%) rotate(3deg) translateX(4px)} }
+  .splatter { position:absolute;border-radius:50%;background:rgba(139,0,0,0.4);pointer-events:none; }
+  .paranoid-reactivate { position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:var(--horror);font-size:36px;color:var(--blood-bright);letter-spacing:6px;text-align:center;opacity:0;transition:opacity 0.3s;z-index:50;pointer-events:none;text-shadow:0 0 20px var(--blood); }
+  .paranoid-reactivate.show { opacity:1; }
+
+  /* SIDEBAR */
+  .sidebar { width:260px;background:#0a0603;border-left:1px solid #2a1500;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0; }
+  .ai-panel { padding:12px;border-bottom:1px solid #1a0a00;flex-shrink:0; }
+  .ai-header { display:flex;align-items:center;gap:8px;margin-bottom:10px; }
+  .ai-avatar { width:44px;height:44px;flex-shrink:0; }
+  .ai-name { font-family:var(--horror);font-size:14px;color:var(--blood-bright);letter-spacing:2px; }
+  .ai-status { font-size:8px;color:var(--ink-dim);letter-spacing:1px; }
+  .ai-message-box { background:rgba(30,10,5,0.8);border:1px solid #2a1000;border-left:2px solid var(--blood);padding:8px 10px;font-size:10px;color:var(--ink);line-height:1.6;min-height:60px;letter-spacing:0.5px;position:relative; }
+  .ai-cursor { display:inline-block;width:6px;height:10px;background:var(--ink);animation:blink 0.6s infinite;vertical-align:middle;margin-left:2px; }
+  .tabs { display:flex;border-bottom:1px solid #1a0a00;flex-shrink:0; }
+  .tab { flex:1;padding:7px 4px;font-size:8px;text-align:center;cursor:pointer;color:var(--ink-dim);letter-spacing:1px;border-bottom:2px solid transparent;transition:all 0.2s; }
+  .tab.active { color:var(--blood-bright);border-bottom-color:var(--blood-bright); }
+  .tab-content { display:none;flex:1;overflow-y:auto;padding:12px; }
+  .tab-content.active { display:block; }
+  .tab-content::-webkit-scrollbar { width:3px; }
+  .tab-content::-webkit-scrollbar-thumb { background:var(--ink-dim); }
+  .calc-label { font-size:9px;color:var(--ink-dim);letter-spacing:2px;margin-bottom:6px;text-transform:uppercase; }
+  .calc-input { display:flex;align-items:center;gap:8px;margin-bottom:6px; }
+  .calc-input label { font-size:9px;color:var(--ink-dim);min-width:80px; }
+  .calc-input input[type="range"] { flex:1;-webkit-appearance:none;height:2px;background:#2a1500;outline:none; }
+  .calc-input input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:var(--blood-bright);cursor:pointer; }
+  .calc-input .val { font-size:9px;color:var(--ink);min-width:28px;text-align:right; }
+  .result-box { background:rgba(20,5,5,0.8);border:1px solid var(--blood);padding:10px;margin-top:8px; }
+  .result-row { display:flex;justify-content:space-between;margin-bottom:4px;font-size:9px; }
+  .result-row .key { color:var(--ink-dim); }
+  .result-row .val-good { color:var(--green-bright);font-weight:bold; }
+  .result-row .val-med { color:#ffaa00;font-weight:bold; }
+  .result-row .val-bad { color:var(--red-alert);font-weight:bold; }
+  .chance-bar { height:3px;background:#1a0a00;margin-top:8px;overflow:hidden; }
+  .chance-fill { height:100%;background:linear-gradient(90deg,var(--blood),var(--blood-bright));transition:width 0.5s ease; }
+  .ration-result { font-size:9px;line-height:1.8;color:var(--ink-dim); }
+  .ration-grid { display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px; }
+  .ration-card { background:rgba(20,10,5,0.8);border:1px solid #2a1500;padding:6px 8px; }
+  .ration-card-label { font-size:8px;color:var(--ink-dim);margin-bottom:2px; }
+  .ration-card-val { font-size:12px;color:var(--ink); }
+  .ration-card-val.danger { color:var(--red-alert); }
+  .ration-card-val.safe { color:var(--green-bright); }
+  .dest-list { display:flex;flex-direction:column;gap:4px; }
+  .dest-item { display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(20,10,5,0.5);border:1px solid #1a0a00;cursor:pointer;transition:all 0.2s; }
+  .dest-item:hover { border-color:var(--blood);background:rgba(50,10,5,0.5); }
+  .dest-item.active { border-color:var(--blood-bright); }
+  .dest-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+  .dest-name { font-size:9px;color:var(--ink);letter-spacing:1px; }
+  .dest-threat { font-size:8px;margin-left:auto; }
+  .dest-threat.high { color:var(--red-alert); }
+  .dest-threat.med { color:#ffaa00; }
+  .dest-threat.low { color:var(--green-bright); }
+  .interrupt-overlay { position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.7); }
+  .interrupt-overlay.show { display:flex; }
+  .interrupt-box { background:#0a0603;border:2px solid var(--blood);padding:24px 32px;max-width:320px;text-align:center;animation:shake 0.3s; }
+  .interrupt-title { font-family:var(--horror);font-size:22px;color:var(--blood-bright);letter-spacing:3px;margin-bottom:12px; }
+  .interrupt-body { font-size:10px;color:var(--ink);line-height:1.8;margin-bottom:16px;letter-spacing:1px;white-space:pre-line; }
+  .interrupt-countdown { font-size:11px;color:var(--ink-dim);margin-bottom:12px;animation:blink 0.5s infinite; }
+  .interrupt-btn { font-family:var(--mono);font-size:10px;background:var(--blood);border:none;color:#fff;padding:8px 24px;cursor:pointer;letter-spacing:2px;display:none; }
+  .interrupt-btn.show { display:inline-block; }
+  .bottom-controls { padding:6px 12px;border-top:1px solid #1a0a00;display:flex;align-items:center;gap:10px;flex-shrink:0;background:#0a0603; }
+  .ctrl-btn { font-family:var(--mono);font-size:8px;background:rgba(30,10,5,0.8);border:1px solid var(--ink-dim);color:var(--ink-dim);padding:4px 10px;cursor:pointer;letter-spacing:1px;transition:all 0.2s; }
+  .ctrl-btn:hover { color:var(--ink);border-color:var(--ink); }
+  .ctrl-btn.danger { border-color:var(--blood);color:var(--blood-bright); }
+  .signal { font-size:8px;color:var(--ink-dim);margin-left:auto;letter-spacing:1px; }
+  .signal span { color:var(--green-bright); }
+  .calc-section { margin-bottom:16px; }
+</style>
+</head>
+<body>
+
+<!-- FACE SCAN SCREEN -->
+<div id="face-screen" class="screen active">
+  <div style="margin-bottom:20px;text-align:center">
+    <div class="face-title">DEADZONE//OS</div>
+    <div class="face-sub">BIOMETRIC ACCESS CONTROL v2.7.3</div>
+  </div>
+  <div class="face-container">
+    <video id="face-video" autoplay muted playsinline></video>
+    <div class="scan-overlay">
+      <div class="face-grid"></div>
+      <div class="scan-corner tl"></div><div class="scan-corner tr"></div>
+      <div class="scan-corner bl"></div><div class="scan-corner br"></div>
+      <div class="scan-line" id="scan-line"></div>
+      <svg class="face-dots" id="face-dots-svg" viewBox="0 0 280 280">
+        <circle cx="140" cy="90" r="2" fill="#CC0000"/>
+        <circle cx="100" cy="110" r="2" fill="#CC0000"/>
+        <circle cx="180" cy="110" r="2" fill="#CC0000"/>
+        <circle cx="90" cy="140" r="2" fill="#CC0000"/>
+        <circle cx="190" cy="140" r="2" fill="#CC0000"/>
+        <circle cx="120" cy="155" r="2" fill="#CC0000"/>
+        <circle cx="160" cy="155" r="2" fill="#CC0000"/>
+        <circle cx="140" cy="175" r="2" fill="#CC0000"/>
+        <circle cx="105" cy="130" r="2" fill="#CC0000"/>
+        <circle cx="175" cy="130" r="2" fill="#CC0000"/>
+        <line x1="140" y1="90" x2="100" y2="110" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="140" y1="90" x2="180" y2="110" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="100" y1="110" x2="90" y2="140" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="180" y1="110" x2="190" y2="140" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="90" y1="140" x2="120" y2="155" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="190" y1="140" x2="160" y2="155" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="120" y1="155" x2="140" y2="175" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+        <line x1="160" y1="155" x2="140" y2="175" stroke="#8B0000" stroke-width="0.5" opacity="0.5"/>
+      </svg>
+      <div class="face-denied-msg" id="denied-msg">INTRUDER<br>DETECTED</div>
+    </div>
+  </div>
+  <div class="face-status" id="face-status">AWAITING CAMERA INPUT...</div>
+  <div class="face-bar"><div class="face-bar-fill" id="face-bar-fill"></div></div>
+  <div style="font-size:9px;color:var(--ink-dim);text-align:center;letter-spacing:1px">
+    AUTHORIZED USER: <span style="color:var(--blood-bright)">FARIZ</span>
+  </div>
+  <div class="cam-error" id="cam-error">Camera unavailable —
+    <button class="override-btn" onclick="manualOverride()">OVERRIDE [DEMO]</button>
+  </div>
+</div>
+
+<!-- BOOT SCREEN -->
+<div id="boot-screen" class="screen"></div>
+
+<!-- MAIN APP -->
+<div id="main-screen" class="screen">
+  <div class="top-bar">
+    <div class="top-bar-title">☠ DEADZONE</div>
+    <div class="top-bar-coords" id="coords">37.4419°N 122.1430°W</div>
+    <div class="paranoid-badge" id="paranoid-badge">⚠ PARANOID MODE</div>
+    <div class="top-bar-user">// FARIZ //</div>
+  </div>
+  <div class="main-layout">
+    <div class="map-area" id="map-area">
+      <div class="map-grid"></div>
+      <div class="splatter" style="left:15%;top:20%;width:35px;height:25px;transform:rotate(30deg)"></div>
+      <div class="splatter" style="left:70%;top:60%;width:20px;height:30px;transform:rotate(-15deg)"></div>
+      <div class="splatter" style="left:45%;top:80%;width:40px;height:20px;transform:rotate(60deg)"></div>
+      <div class="splatter" style="left:80%;top:25%;width:15px;height:15px"></div>
+      <svg class="route-svg" id="route-svg" width="100%" height="100%"></svg>
+      <div class="map-location" style="left:50%;top:50%"><div class="map-dot safe"></div><div class="map-label">YOU</div></div>
+      <div class="map-location" style="left:20%;top:25%" onclick="selectDest('hospital')"><div class="map-dot danger"></div><div class="map-label">RACCOON HOSP.</div></div>
+      <div class="map-location" style="left:72%;top:20%" onclick="selectDest('police')"><div class="map-dot"></div><div class="map-label">R.P.D.</div></div>
+      <div class="map-location" style="left:30%;top:75%" onclick="selectDest('park')"><div class="map-dot"></div><div class="map-label">RACCOON PARK</div></div>
+      <div class="map-location" style="left:80%;top:70%" onclick="selectDest('shelter')"><div class="map-dot safe"></div><div class="map-label">SAFE HOUSE</div></div>
+      <div class="map-location" style="left:60%;top:45%" onclick="selectDest('clock')"><div class="map-dot danger"></div><div class="map-label">CLOCK TOWER</div></div>
+      <div class="zombie-icon" style="left:35%;top:38%">🧟</div>
+      <div class="zombie-icon" style="left:62%;top:28%;animation-delay:0.5s">🧟</div>
+      <div class="zombie-icon" style="left:25%;top:60%;animation-delay:1s">🧟‍♀️</div>
+      <div class="zombie-icon" style="left:75%;top:50%;animation-delay:0.3s">🧟</div>
+      <div class="zombie-icon" style="left:50%;top:30%;animation-delay:0.8s">🧟‍♀️</div>
+      <div class="zombie-icon" style="left:15%;top:45%;animation-delay:1.3s">🧟</div>
+      <div class="zombie-icon" style="left:88%;top:40%;animation-delay:0.6s">🧟</div>
+      <div class="player-dot" id="player-dot"></div>
+      <div class="paranoid-overlay active" id="paranoid-overlay">
+        <div class="paranoid-text" style="top:10%;left:5%">THEY ARE WATCHING</div>
+        <div class="paranoid-text" style="top:30%;right:8%">ROUTE COMPROMISED</div>
+        <div class="paranoid-text" style="bottom:15%;left:12%">DO NOT TRUST DIRECT PATHS</div>
+        <div class="paranoid-text" style="top:60%;left:40%">DECOY ROUTE ACTIVE</div>
+      </div>
+      <div class="paranoid-reactivate" id="paranoid-reactivate">PARANOID MODE<br>REACTIVATED</div>
+      <div class="tap-pattern-ui" id="tap-pattern-ui">
+        <div class="tap-instruction">TAP RHYTHM TO CALM GPS: ●○●●○●</div>
+        <div class="tap-dots">
+          <div class="tap-dot" id="td0"></div><div class="tap-dot" id="td1"></div>
+          <div class="tap-dot" id="td2"></div><div class="tap-dot" id="td3"></div>
+          <div class="tap-dot" id="td4"></div><div class="tap-dot" id="td5"></div>
+        </div>
+        <button class="tap-btn" onclick="registerTap()">TAP [SPACEBAR]</button>
+      </div>
+      <div class="route-info" id="route-info">
+        <div class="route-info-line">DEST: <span id="ri-dest">—</span></div>
+        <div class="route-info-line">OPTIMAL: <span id="ri-optimal">—</span></div>
+        <div class="route-info-line">CURRENT: <span id="ri-current">—</span></div>
+        <div class="route-info-line route-paranoid" id="ri-paranoid">⚠ PARANOID ROUTING x10</div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="ai-panel">
+        <div class="ai-header">
+          <div class="ai-avatar">
+            <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+              <rect x="0" y="0" width="44" height="44" fill="#0a0603"/>
+              <ellipse cx="22" cy="16" rx="9" ry="10" fill="#1a0a00" stroke="#8B0000" stroke-width="0.8"/>
+              <ellipse cx="18" cy="14" rx="2.5" ry="3" fill="#CC0000" opacity="0.8"/>
+              <ellipse cx="26" cy="14" rx="2.5" ry="3" fill="#CC0000" opacity="0.8"/>
+              <rect x="16" y="12" width="4" height="1" fill="#ff4444" opacity="0.6"/>
+              <rect x="18" y="23" width="2" height="4" fill="#c8a060" opacity="0.7"/>
+              <rect x="21" y="23" width="2" height="3" fill="#c8a060" opacity="0.7"/>
+              <rect x="24" y="23" width="2" height="4" fill="#c8a060" opacity="0.7"/>
+              <line x1="22" y1="26" x2="22" y2="36" stroke="#3a2510" stroke-width="2"/>
+              <ellipse cx="22" cy="29" rx="3" ry="2" fill="#1a0a00" stroke="#5C2A00" stroke-width="0.5"/>
+              <ellipse cx="22" cy="34" rx="2.5" ry="1.5" fill="#1a0a00" stroke="#5C2A00" stroke-width="0.5"/>
+              <line x1="19" y1="29" x2="8" y2="38" stroke="#3a2510" stroke-width="1.5"/>
+              <line x1="25" y1="29" x2="36" y2="38" stroke="#3a2510" stroke-width="1.5"/>
+              <rect x="2" y="8" width="10" height="7" fill="#0d0804" stroke="#5C2A00" stroke-width="0.5"/>
+              <rect x="2" y="9" width="10" height="2" fill="#2a1500" opacity="0.8"/>
+              <rect x="32" y="10" width="10" height="7" fill="#0d0804" stroke="#5C2A00" stroke-width="0.5"/>
+              <rect x="32" y="11" width="10" height="2" fill="#2a1500" opacity="0.8"/>
+              <line x1="0" y1="20" x2="12" y2="20" stroke="#CC0000" stroke-width="0.5" opacity="0.4"/>
+              <line x1="32" y1="25" x2="44" y2="25" stroke="#CC0000" stroke-width="0.5" opacity="0.4"/>
+            </svg>
+          </div>
+          <div>
+            <div class="ai-name">MORTI.exe</div>
+            <div class="ai-status">AI TACTICAL ADVISOR // ONLINE</div>
+          </div>
+        </div>
+        <div class="ai-message-box" id="ai-msg">Analyzing sector data...<span class="ai-cursor"></span></div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('map')">MAP</div>
+        <div class="tab" onclick="switchTab('zombie')">ZOMBIES</div>
+        <div class="tab" onclick="switchTab('rations')">RATIONS</div>
+      </div>
+
+      <div class="tab-content active" id="tab-map">
+        <div class="calc-label">SELECT DESTINATION</div>
+        <div class="dest-list">
+          <div class="dest-item" id="dest-hospital" onclick="selectDest('hospital')">
+            <div class="dest-dot" style="background:#ff2222"></div>
+            <div class="dest-name">RACCOON HOSPITAL</div>
+            <div class="dest-threat high">HIGH</div>
+          </div>
+          <div class="dest-item" id="dest-police" onclick="selectDest('police')">
+            <div class="dest-dot" style="background:#ff8800"></div>
+            <div class="dest-name">R.P.D. HQ</div>
+            <div class="dest-threat med">MED</div>
+          </div>
+          <div class="dest-item" id="dest-clock" onclick="selectDest('clock')">
+            <div class="dest-dot" style="background:#ff2222"></div>
+            <div class="dest-name">CLOCK TOWER</div>
+            <div class="dest-threat high">HIGH</div>
+          </div>
+          <div class="dest-item" id="dest-park" onclick="selectDest('park')">
+            <div class="dest-dot" style="background:#ff8800"></div>
+            <div class="dest-name">RACCOON PARK</div>
+            <div class="dest-threat med">MED</div>
+          </div>
+          <div class="dest-item" id="dest-shelter" onclick="selectDest('shelter')">
+            <div class="dest-dot" style="background:#22ff44"></div>
+            <div class="dest-name">SAFE HOUSE DELTA</div>
+            <div class="dest-threat low">LOW</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;font-size:8px;color:var(--ink-dim);letter-spacing:1px;line-height:1.8">
+          <div id="paranoid-status">⚠ PARANOID MODE: ACTIVE</div>
+          <div id="normal-status" style="display:none;color:var(--green-bright)">✓ NORMAL ROUTING: 30s</div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-zombie">
+        <div class="calc-section">
+          <div class="calc-label">ZOMBIE ELIMINATION ODDS</div>
+          <div class="calc-input"><label>Zombies ahead</label><input type="range" id="zCount" min="1" max="50" value="8" oninput="calcZombies()"><span class="val" id="zCountVal">8</span></div>
+          <div class="calc-input"><label>Stamina (%)</label><input type="range" id="zStamina" min="5" max="100" value="70" oninput="calcZombies()"><span class="val" id="zStaminaVal">70%</span></div>
+          <div class="calc-input"><label>Ammo rounds</label><input type="range" id="zAmmo" min="0" max="60" value="18" oninput="calcZombies()"><span class="val" id="zAmmoVal">18</span></div>
+          <div class="calc-input"><label>Melee skill</label><input type="range" id="zMelee" min="1" max="10" value="5" oninput="calcZombies()"><span class="val" id="zMeleeVal">5/10</span></div>
+          <div class="calc-input"><label>Escape routes</label><input type="range" id="zEscape" min="0" max="5" value="2" oninput="calcZombies()"><span class="val" id="zEscapeVal">2</span></div>
+          <div class="result-box">
+            <div class="result-row"><span class="key">Elimination chance</span><span class="val-med" id="zChance">—</span></div>
+            <div class="result-row"><span class="key">Projected kills</span><span class="val-med" id="zKills">—</span></div>
+            <div class="result-row"><span class="key">Ammo efficiency</span><span class="val-med" id="zEfficiency">—</span></div>
+            <div class="result-row"><span class="key">Survival odds</span><span class="val-good" id="zSurvival">—</span></div>
+            <div class="result-row"><span class="key">MORTI says</span><span style="color:var(--blood-bright);font-size:8px" id="zAdvice">—</span></div>
+            <div class="chance-bar"><div class="chance-fill" id="chance-fill" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="tab-rations">
+        <div class="calc-section">
+          <div class="calc-label">RATION OPTIMIZER</div>
+          <div class="calc-input"><label>Days surviving</label><input type="range" id="rDays" min="1" max="60" value="14" oninput="calcRations()"><span class="val" id="rDaysVal">14</span></div>
+          <div class="calc-input"><label>Ration units</label><input type="range" id="rUnits" min="5" max="200" value="40" oninput="calcRations()"><span class="val" id="rUnitsVal">40</span></div>
+          <div class="calc-input"><label>Group size</label><input type="range" id="rGroup" min="1" max="8" value="2" oninput="calcRations()"><span class="val" id="rGroupVal">2</span></div>
+          <div class="calc-input"><label>Combat intensity</label><input type="range" id="rCombat" min="1" max="5" value="3" oninput="calcRations()"><span class="val" id="rCombatVal">3/5</span></div>
+          <div class="result-box">
+            <div class="ration-grid">
+              <div class="ration-card"><div class="ration-card-label">DAILY ALLOC</div><div class="ration-card-val" id="rDaily">—</div></div>
+              <div class="ration-card"><div class="ration-card-label">SPAREABLE</div><div class="ration-card-val" id="rSpareable">—</div></div>
+              <div class="ration-card"><div class="ration-card-label">SURPLUS</div><div class="ration-card-val" id="rSurplus">—</div></div>
+              <div class="ration-card"><div class="ration-card-label">POWER LVL</div><div class="ration-card-val" id="rPower">—</div></div>
+            </div>
+            <div class="ration-result" id="rAdvice" style="margin-top:10px">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-controls">
+        <button class="ctrl-btn" onclick="triggerInterrupt()">⚠ ALERT</button>
+        <button class="ctrl-btn danger" onclick="toggleParanoid()">☠ PARANOID</button>
+        <div class="signal">SIG: <span>███</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- INTERRUPT OVERLAY -->
+<div class="interrupt-overlay" id="interrupt-overlay">
+  <div class="interrupt-box">
+    <div class="interrupt-title" id="int-title">⚠ WARNING</div>
+    <div class="interrupt-body" id="int-body"></div>
+    <div class="interrupt-countdown" id="int-countdown"></div>
+    <button class="interrupt-btn" id="int-btn" onclick="dismissInterrupt()">ACKNOWLEDGE</button>
+  </div>
+</div>
+
+<script>
+let appState = { paranoidMode:true, paranoidTimer:null, tapIndex:0, tapTimeout:null, currentDest:null, interruptTimer:null };
+const destinations = {
+  hospital:{ name:'RACCOON HOSPITAL', x:20, y:25, dist:3.2, aiMsg:"Hospital sector OVERRUN. 23 hostiles confirmed. Sewer approach recommended — avoid Mission St." },
+  police:  { name:'R.P.D. HQ',        x:72, y:20, dist:2.1, aiMsg:"R.P.D. is defensible but supply-stripped. 9 hostiles in the courtyard. Side entrance recommended." },
+  clock:   { name:'CLOCK TOWER',      x:60, y:45, dist:1.8, aiMsg:"Clock tower has a G-virus specimen nearby. Do NOT engage. I calculate a 74% chance you don't make it back. Just saying." },
+  park:    { name:'RACCOON PARK',      x:30, y:75, dist:2.8, aiMsg:"Park has water sources. 6 roamers detected. High brush provides cover. Viable rest point." },
+  shelter: { name:'SAFE HOUSE DELTA', x:80, y:70, dist:4.1, aiMsg:"Safe House Delta is clear. Reinforced. Stock of 12 rations confirmed. Recommended extraction point." },
+};
+const aiMessages = [
+  "Scanning threat grid... 47 infected in 500m radius. Sleep would be inadvisable.",
+  "Your current route has a 63% chance of zombie contact. Paranoid mode suggests the long way around. Obviously.",
+  "Ration levels nominal. For now. I've seen what happens to groups that share. Don't.",
+  "GPS recalibrating. No this is not a glitch. The system is working exactly as intended.",
+  "Biometric confirmed: FARIZ. Welcome to the apocalypse. You look terrible.",
+  "Zone 4 just went dark. Either the horde moved on... or they got the last survivor. 50/50.",
+];
+const mortiAdvice = ["RUN.","Bold. Stupid, but bold.","You're gonna need more ammo.","I've seen better odds on a coin flip.","Methodical slaying... approved.","Consider the sewer. Just consider it.","High confidence. For a human.","I'd say pray but I don't think that's working anymore."];
+const interrupts = [
+  { title:'⚠ HORDE DETECTED', body:'A horde of 34 infected has been detected within 200m of your position.\n\nPlease wait for route recalculation.\n\nParanoid mode will reassess all paths.', wait:5 },
+  { title:'☠ SYSTEM WARNING', body:'DEADZONE//OS has detected suspicious routing behaviour.\n\nYou attempted a direct path.\n\nDirect paths are compromised. You should know this by now.', wait:6 },
+  { title:'⚡ MANDATORY UPDATE', body:'Threat database update v0.0.3 installing...\n\n2,847 zombie variants → 2,849 zombie variants\n\nNew entry: "Fast walkers". They\'re not running. They\'re just walking... quickly.', wait:7 },
+  { title:'📡 SIGNAL LOST', body:'GPS signal degraded for 30 seconds.\n\nAll routes recalculated via maximum paranoia protocol.\n\nYour ETA has increased from 4 minutes to 47 minutes. You\'re welcome.', wait:5 },
+];
+let intIdx=0, aiMsgIndex=0;
+let stream=null, scanInterval=null;
+
+async function startFaceScan(){
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+    document.getElementById('face-video').srcObject = stream;
+    document.getElementById('face-status').textContent='CAMERA ACTIVE — SCANNING...';
+    document.getElementById('face-status').className='face-status scanning';
+    document.querySelector('.scan-line').classList.add('active');
+    setTimeout(()=>document.getElementById('face-dots-svg').classList.add('active'),1000);
+    runScanSequence();
+  } catch(e){
+    document.getElementById('cam-error').style.display='block';
+    document.getElementById('face-status').textContent='CAMERA ACCESS DENIED';
+  }
+}
+
+function runScanSequence(){
+  let progress=0;
+  const fill=document.getElementById('face-bar-fill'), status=document.getElementById('face-status');
+  const statuses=['ANALYZING FACIAL GEOMETRY...','COMPARING BIOMETRIC DATA...','CHECKING THREAT DATABASE...','VALIDATING IDENTITY...','CROSS-REFERENCING FARIZ.db...'];
+  let si=0;
+  scanInterval=setInterval(()=>{
+    progress+=Math.random()*3+1;
+    fill.style.width=Math.min(progress,100)+'%';
+    if(si<statuses.length&&progress>(si+1)*18) status.textContent=statuses[si++];
+    if(progress>=100){ clearInterval(scanInterval); fill.style.width='100%'; setTimeout(grantAccess,400); }
+  },80);
+}
+
+function grantAccess(){
+  const status=document.getElementById('face-status');
+  status.className='face-status granted'; status.textContent='✓ IDENTITY CONFIRMED: FARIZ';
+  document.querySelector('.scan-line').style.background='linear-gradient(90deg,transparent,#22ff44,transparent)';
+  document.getElementById('face-bar-fill').style.background='#22ff44';
+  document.getElementById('face-dots-svg').querySelectorAll('circle').forEach(c=>c.setAttribute('fill','#22ff44'));
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  setTimeout(startBoot,1200);
+}
+function manualOverride(){ grantAccess(); }
+
+const bootLines=[
+  {text:'DEADZONE//OS v2.7.3 — LOADING KERNEL...',cls:'',delay:0},
+  {text:'[OK] Memory check: 847MB/1024MB available',cls:'ok',delay:200},
+  {text:'[OK] Threat database: 2,847 zombie variants loaded',cls:'ok',delay:400},
+  {text:'[WARN] GPS signal degraded — paranoid routing FORCED',cls:'warn',delay:600},
+  {text:'[OK] MORTI.exe tactical AI: ONLINE',cls:'ok',delay:800},
+  {text:'[WARN] Last session: 6 days ago. Fariz, are you alive?',cls:'warn',delay:1000},
+  {text:'[ERR] Route optimizer: COMPROMISED — paranoid mode engaged',cls:'err',delay:1200},
+  {text:'[OK] Biometric cache: FARIZ — AUTHORIZED SURVIVOR',cls:'ok',delay:1400},
+  {text:'[ERR] Zone 7 comms: SILENT — presumed overrun',cls:'err',delay:1600},
+  {text:'[OK] Ration calculator: ONLINE',cls:'ok',delay:1800},
+  {text:'────────────────────────────────────',cls:'',delay:2000},
+  {text:'⚠ NOTICE: All routes are 10x longer by design.',cls:'warn',delay:2100},
+  {text:'⚠ This is not a bug. The zombies want you to take shortcuts.',cls:'warn',delay:2300},
+  {text:'⚠ Tap rhythm required to restore normal routing.',cls:'warn',delay:2500},
+  {text:'────────────────────────────────────',cls:'',delay:2700},
+  {text:'LOADING DEADZONE SURVIVAL INTERFACE...',cls:'blood',delay:3100},
+];
+
+function startBoot(){
+  document.getElementById('face-screen').classList.remove('active');
+  const boot=document.getElementById('boot-screen');
+  boot.classList.add('active');
+  const pb=document.createElement('div'); pb.className='boot-progress';
+  const pbf=document.createElement('div'); pbf.className='boot-progress-fill'; pbf.id='boot-fill';
+  pb.appendChild(pbf); boot.appendChild(pb);
+  bootLines.forEach((line,i)=>{
+    setTimeout(()=>{
+      const el=document.createElement('div');
+      el.className='boot-line'+(line.cls?' '+line.cls:'');
+      el.textContent=line.text; boot.appendChild(el); boot.scrollTop=boot.scrollHeight;
+    },line.delay+500);
+  });
+  setTimeout(()=>{
+    const warn=document.createElement('div'); warn.className='unskippable-warning';
+    warn.innerHTML=`<div class="uw-title">⚠ MANDATORY SAFETY NOTICE [READ CAREFULLY]</div>
+    <div class="uw-text">You are entering a Class-5 Contamination Zone. DEADZONE//OS accepts no liability for death,<br>
+    dismemberment, infection, or psychological damage sustained during navigation.<br>
+    By continuing, you confirm you are FARIZ and that you accept all risks.<br>
+    Paranoid Mode cannot be permanently disabled. This is intentional. You're welcome.</div>
+    <div class="uw-countdown" id="boot-uw-cd">Please wait... <span id="uw-sec">8</span>s</div>`;
+    boot.appendChild(warn);
+    let sec=8;
+    const cd=setInterval(()=>{
+      sec--; const el=document.getElementById('uw-sec'); if(el) el.textContent=sec;
+      if(sec<=0){ clearInterval(cd); const uwcd=document.getElementById('boot-uw-cd');
+        if(uwcd) uwcd.innerHTML='<button class="override-btn" onclick="enterApp()" style="color:var(--blood-bright);border-color:var(--blood);margin-top:4px">► ENTER DEADZONE</button>'; }
+    },1000);
+  },3700);
+  setTimeout(()=>{ const f=document.getElementById('boot-fill'); if(f) requestAnimationFrame(()=>f.style.width='100%'); },2200);
+}
+
+function enterApp(){
+  document.getElementById('boot-screen').classList.remove('active');
+  document.getElementById('main-screen').classList.add('active');
+  calcZombies(); calcRations();
+  setAiMessage(aiMessages[0]);
+  document.getElementById('tap-pattern-ui').classList.add('show');
+  setInterval(()=>{ aiMsgIndex=(aiMsgIndex+1)%aiMessages.length; setAiMessage(aiMessages[aiMsgIndex]); },12000);
+  setTimeout(()=>triggerInterrupt(),15000);
+  setInterval(()=>{ const lat=(37.4419+(Math.random()-0.5)*0.001).toFixed(4); const lon=(122.1430+(Math.random()-0.5)*0.001).toFixed(4); document.getElementById('coords').textContent=lat+'°N '+lon+'°W'; },3000);
+}
+
+function setAiMessage(msg){
+  const el=document.getElementById('ai-msg'); el.innerHTML=''; let i=0;
+  const iv=setInterval(()=>{
+    if(i<msg.length) el.innerHTML=msg.substring(0,++i)+'<span class="ai-cursor"></span>';
+    else { clearInterval(iv); el.innerHTML=msg+'<span class="ai-cursor"></span>'; }
+  },18);
+}
+
+function selectDest(key){
+  const dest=destinations[key]; appState.currentDest=key;
+  document.querySelectorAll('.dest-item').forEach(el=>el.classList.remove('active'));
+  document.getElementById('dest-'+key).classList.add('active');
+  document.getElementById('ri-dest').textContent=dest.name;
+  const opt=dest.dist.toFixed(1)+' km', par=(dest.dist*10).toFixed(1)+' km';
+  document.getElementById('ri-optimal').textContent=opt;
+  document.getElementById('ri-current').textContent=appState.paranoidMode?par:opt;
+  drawRoute(dest); setAiMessage(dest.aiMsg); switchTab('map');
+}
+
+function drawRoute(dest){
+  const svg=document.getElementById('route-svg'), ma=document.getElementById('map-area');
+  const w=ma.offsetWidth, h=ma.offsetHeight;
+  const sx=w*0.5, sy=h*0.5, ex=w*dest.x/100, ey=h*dest.y/100;
+  svg.innerHTML=''; const ns='http://www.w3.org/2000/svg';
+  if(appState.paranoidMode){
+    const pts=generateParanoidRoute(sx,sy,ex,ey,w,h);
+    const path=document.createElementNS(ns,'path');
+    let d=`M ${sx} ${sy}`; pts.forEach(p=>d+=` L ${p[0]} ${p[1]}`); d+=` L ${ex} ${ey}`;
+    path.setAttribute('d',d); path.setAttribute('stroke','#8B0000'); path.setAttribute('stroke-width','1.5');
+    path.setAttribute('fill','none'); path.setAttribute('stroke-dasharray','6 3'); path.setAttribute('opacity','0.7');
+    svg.appendChild(path);
+    const op=document.createElementNS(ns,'line');
+    op.setAttribute('x1',sx);op.setAttribute('y1',sy);op.setAttribute('x2',ex);op.setAttribute('y2',ey);
+    op.setAttribute('stroke','#2a2a2a');op.setAttribute('stroke-width','1');op.setAttribute('stroke-dasharray','3 6');op.setAttribute('opacity','0.4');
+    svg.appendChild(op);
+  } else {
+    const path=document.createElementNS(ns,'line');
+    path.setAttribute('x1',sx);path.setAttribute('y1',sy);path.setAttribute('x2',ex);path.setAttribute('y2',ey);
+    path.setAttribute('stroke','#22ff44');path.setAttribute('stroke-width','2');path.setAttribute('opacity','0.8');
+    svg.appendChild(path);
+  }
+  const c=document.createElementNS(ns,'circle');
+  c.setAttribute('cx',ex);c.setAttribute('cy',ey);c.setAttribute('r','6');
+  c.setAttribute('fill','none');c.setAttribute('stroke',appState.paranoidMode?'#CC0000':'#22ff44');c.setAttribute('stroke-width','2');
+  svg.appendChild(c);
+}
+
+function generateParanoidRoute(sx,sy,ex,ey,w,h){
+  const pts=[]; for(let i=1;i<=12;i++){
+    const t=i/13, bx=sx+(ex-sx)*t, by=sy+(ey-sy)*t;
+    pts.push([Math.max(20,Math.min(w-20,bx+(Math.random()-0.5)*160)),Math.max(20,Math.min(h-20,by+(Math.random()-0.5)*160))]);
+  } return pts;
+}
+
+function toggleParanoid(){
+  if(appState.paranoidMode){
+    appState.paranoidMode=false;
+    document.getElementById('paranoid-overlay').classList.remove('active');
+    document.getElementById('paranoid-badge').style.display='none';
+    document.getElementById('paranoid-status').style.display='none';
+    document.getElementById('normal-status').style.display='block';
+    document.getElementById('tap-pattern-ui').classList.remove('show');
+    document.getElementById('ri-paranoid').style.display='none';
+    if(appState.currentDest) selectDest(appState.currentDest);
+    setAiMessage("Normal routing restored. You have 30 seconds before paranoia kicks back in. Enjoy your false sense of security.");
+    clearTimeout(appState.paranoidTimer);
+    appState.paranoidTimer=setTimeout(reactivateParanoid,30000);
+  }
+}
+
+function reactivateParanoid(){
+  appState.paranoidMode=true;
+  document.getElementById('paranoid-overlay').classList.add('active');
+  document.getElementById('paranoid-badge').style.display='block';
+  document.getElementById('paranoid-status').style.display='block';
+  document.getElementById('normal-status').style.display='none';
+  document.getElementById('tap-pattern-ui').classList.add('show');
+  document.getElementById('ri-paranoid').style.display='block';
+  appState.tapIndex=0; document.querySelectorAll('.tap-dot').forEach(d=>d.classList.remove('hit'));
+  const msg=document.getElementById('paranoid-reactivate'); msg.classList.add('show');
+  setTimeout(()=>msg.classList.remove('show'),2000);
+  if(appState.currentDest){ selectDest(appState.currentDest); document.getElementById('ri-current').textContent=(destinations[appState.currentDest].dist*10).toFixed(1)+' km'; }
+  setAiMessage("Paranoid mode reactivated. Did you really think it would stay off? That's adorable.");
+}
+
+function registerTap(){
+  const idx=appState.tapIndex;
+  const dot=document.getElementById('td'+idx); if(dot) dot.classList.add('hit');
+  clearTimeout(appState.tapTimeout);
+  appState.tapTimeout=setTimeout(()=>{ appState.tapIndex=0; document.querySelectorAll('.tap-dot').forEach(d=>d.classList.remove('hit')); },2000);
+  appState.tapIndex++;
+  if(appState.tapIndex>=6){
+    appState.tapIndex=0; clearTimeout(appState.tapTimeout);
+    document.querySelectorAll('.tap-dot').forEach(d=>d.classList.add('hit'));
+    setTimeout(()=>{ document.querySelectorAll('.tap-dot').forEach(d=>d.classList.remove('hit')); toggleParanoid(); },400);
+  }
+}
+document.addEventListener('keydown',e=>{ if(e.code==='Space'&&document.getElementById('main-screen').classList.contains('active')){ e.preventDefault(); registerTap(); }});
+
+function calcZombies(){
+  const z=+document.getElementById('zCount').value, s=+document.getElementById('zStamina').value;
+  const a=+document.getElementById('zAmmo').value, m=+document.getElementById('zMelee').value;
+  const e=+document.getElementById('zEscape').value;
+  document.getElementById('zCountVal').textContent=z; document.getElementById('zStaminaVal').textContent=s+'%';
+  document.getElementById('zAmmoVal').textContent=a; document.getElementById('zMeleeVal').textContent=m+'/10';
+  document.getElementById('zEscapeVal').textContent=e;
+  const ammoKills=Math.min(a*0.6,z), meleeKills=Math.min((s/100)*(m/10)*(z-ammoKills)*0.4,z-ammoKills);
+  const totalKills=Math.round(ammoKills+meleeKills);
+  const elimChance=Math.min(95,Math.round((totalKills/z)*100*((s/100)*0.5+0.5)));
+  const survivePct=Math.min(97,Math.round(elimChance*0.7+(e*8)*(s/100)));
+  const efficiency=a>0?Math.round((ammoKills/a)*100):0;
+  document.getElementById('zKills').textContent=totalKills+' / '+z;
+  document.getElementById('zChance').textContent=elimChance+'%';
+  document.getElementById('zEfficiency').textContent=efficiency+'%';
+  document.getElementById('zSurvival').textContent=survivePct+'%';
+  document.getElementById('chance-fill').style.width=elimChance+'%';
+  document.getElementById('zAdvice').textContent=mortiAdvice[Math.floor((survivePct/100)*(mortiAdvice.length-1))];
+  const ce=document.getElementById('zChance'); ce.className=elimChance>=70?'val-good':elimChance>=40?'val-med':'val-bad';
+  const se=document.getElementById('zSurvival'); se.className=survivePct>=70?'val-good':survivePct>=40?'val-med':'val-bad';
+}
+
+function calcRations(){
+  const days=+document.getElementById('rDays').value, units=+document.getElementById('rUnits').value;
+  const group=+document.getElementById('rGroup').value, combat=+document.getElementById('rCombat').value;
+  document.getElementById('rDaysVal').textContent=days; document.getElementById('rUnitsVal').textContent=units;
+  document.getElementById('rGroupVal').textContent=group; document.getElementById('rCombatVal').textContent=combat+'/5';
+  const combatMult=1+(combat-1)*0.15, dailyNeeded=group*combatMult;
+  const totalNeeded=Math.ceil(dailyNeeded*days), surplus=Math.max(0,units-totalNeeded);
+  const spareable=Math.floor(surplus*0.4), daily=(units/(days*group)).toFixed(1);
+  const powerPct=Math.min(100,Math.round((+daily/(1.5*combatMult))*100));
+  document.getElementById('rDaily').textContent=daily+'/d';
+  document.getElementById('rSpareable').textContent=spareable;
+  const se=document.getElementById('rSurplus'); se.textContent=surplus; se.className='ration-card-val'+(surplus<0?' danger':surplus>10?' safe':'');
+  const pe=document.getElementById('rPower'); pe.textContent=powerPct+'%'; pe.className='ration-card-val'+(powerPct>=80?' safe':powerPct>=50?'':' danger');
+  let advice='';
+  if(powerPct>=80) advice=`<span style="color:var(--green-bright)">OPTIMAL.</span> ${spareable} units can be traded/shared while maintaining peak combat readiness.`;
+  else if(powerPct>=50) advice=`<span style="color:#ffaa00">MARGINAL.</span> Spare only ${spareable} units. Below that, your reaction time degrades.`;
+  else advice=`<span style="color:var(--red-alert)">CRITICAL.</span> Do NOT spare anything. You're already below safe levels. Forage immediately.`;
+  document.getElementById('rAdvice').innerHTML=advice;
+}
+
+function triggerInterrupt(){
+  const data=interrupts[intIdx%interrupts.length]; intIdx++;
+  document.getElementById('int-title').textContent=data.title;
+  document.getElementById('int-body').textContent=data.body;
+  document.getElementById('int-countdown').style.display='block';
+  document.getElementById('int-btn').classList.remove('show');
+  document.getElementById('interrupt-overlay').classList.add('show');
+  let sec=data.wait;
+  document.getElementById('int-countdown').textContent='Cannot dismiss for '+sec+'s...';
+  appState.interruptTimer=setInterval(()=>{
+    sec--;
+    if(sec>0) document.getElementById('int-countdown').textContent='Cannot dismiss for '+sec+'s...';
+    else { clearInterval(appState.interruptTimer); document.getElementById('int-countdown').style.display='none'; document.getElementById('int-btn').classList.add('show'); }
+  },1000);
+  setTimeout(()=>triggerInterrupt(), 25000+Math.random()*20000);
+}
+
+function dismissInterrupt(){
+  document.getElementById('interrupt-overlay').classList.remove('show');
+  if(!appState.paranoidMode) reactivateParanoid();
+}
+
+function switchTab(name){
+  ['map','zombie','rations'].forEach((n,i)=>{ document.querySelectorAll('.tab')[i].classList.toggle('active',n===name); });
+  document.querySelectorAll('.tab-content').forEach(tc=>tc.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+startFaceScan();
+</script>
+</body>
+</html>
